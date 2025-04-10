@@ -1,4 +1,7 @@
 custom-instructions.md
+legacy_code/
+
+
 # Environment files with credentials
 .env
 
