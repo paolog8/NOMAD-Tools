@@ -7,7 +7,19 @@ import os
 import requests
 import json
 from typing import Dict, Optional, Union, Any, List, Tuple
+from pathlib import Path
 
+# Try to import dotenv for environment file support
+try:
+    from dotenv import load_dotenv
+    DOTENV_AVAILABLE = True
+except ImportError:
+    DOTENV_AVAILABLE = False
+
+# Load environment variables from .env file if available
+if DOTENV_AVAILABLE:
+    env_path = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / '.env'
+    load_dotenv(dotenv_path=env_path)
 
 # Dictionary mapping user-friendly names to actual API URLs
 OASIS_OPTIONS = {
@@ -71,6 +83,18 @@ def get_token_from_env() -> str:
     return token
 
 
+def get_credentials_from_env() -> Tuple[Optional[str], Optional[str]]:
+    """
+    Get username and password from environment variables.
+    
+    Returns:
+        Tuple of (username, password) or (None, None) if not found
+    """
+    username = os.environ.get('NOMAD_USERNAME')
+    password = os.environ.get('NOMAD_PASSWORD')
+    return username, password
+
+
 def verify_token(base_url: str, token: str) -> Dict[str, Any]:
     """
     Verify if a token is valid by making a request to the users/me endpoint.
@@ -102,14 +126,14 @@ def verify_token(base_url: str, token: str) -> Dict[str, Any]:
         raise ValueError(error_message) from e
 
 
-def authenticate(base_url: str, method: str = "token", username: str = None, 
+def authenticate(base_url: str, method: str = "auto", username: str = None, 
                 password: str = None) -> Tuple[str, Dict[str, Any]]:
     """
-    Authenticate with the NOMAD API using either username/password or token from environment.
+    Authenticate with the NOMAD API using available credentials.
     
     Args:
         base_url: The base URL for the NOMAD API
-        method: Authentication method, either "password" or "token"
+        method: Authentication method, either "password", "token", or "auto" (default)
         username: Username for password authentication
         password: Password for password authentication
         
@@ -125,6 +149,23 @@ def authenticate(base_url: str, method: str = "token", username: str = None,
         token = get_token(base_url, username, password)
     elif method == "token":
         token = get_token_from_env()
+    elif method == "auto":
+        # Try token first, then fall back to credentials from env file
+        try:
+            token = get_token_from_env()
+        except ValueError:
+            # Token not found, try credentials from .env
+            env_username, env_password = get_credentials_from_env()
+            if env_username and env_password:
+                token = get_token(base_url, env_username, env_password)
+            else:
+                # If username/password provided directly, use those
+                if username and password:
+                    token = get_token(base_url, username, password)
+                else:
+                    raise ValueError("No authentication credentials found. Please set NOMAD_CLIENT_ACCESS_TOKEN "
+                                    "or NOMAD_USERNAME and NOMAD_PASSWORD environment variables, "
+                                    "or provide username and password directly.")
     else:
         raise ValueError(f"Unsupported authentication method: {method}")
         
