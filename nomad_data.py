@@ -115,6 +115,9 @@ def get_hysprint_data(client, max_entries: Optional[int] = 500) -> Optional[pd.D
                 upload_response = client.make_request("get", f"uploads/{upload_id}")
                 upload_data = upload_response.get('data', {})
                 
+                # Get upload name
+                upload_name = upload_data.get('upload_name', '')
+                
                 # Get author details
                 author_id = upload_data.get('main_author', '')
                 if author_id and author_id not in user_cache:
@@ -126,6 +129,7 @@ def get_hysprint_data(client, max_entries: Optional[int] = 500) -> Optional[pd.D
                 # Extract sample data
                 sample_info = {
                     'upload_id': upload_id,
+                    'upload_name': upload_name,  # Added upload name here
                     'sample_name': entry.get('data', {}).get('name', ''),
                     'lab_id': entry.get('data', {}).get('lab_id', ''),
                     'upload_date': upload_data.get('upload_create_time', ''),
