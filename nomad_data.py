@@ -154,38 +154,70 @@ def get_hysprint_data(client, max_entries: Optional[int] = 500) -> Optional[pd.D
         print(f"Error retrieving HySprint data: {str(e)}")
         return None
 
-def load_attributions(filename: str = 'nomad_samples_with_authors.csv') -> Dict[str, Dict[str, str]]:
+def load_attributions(filename: str = 'attribution_overrides.csv') -> Dict[str, Dict[str, str]]:
     """
     Load attribution overrides from file
+    
+    This function loads user-defined overrides for sample attributions from a CSV file.
+    Each override associates a sample (identified by upload_id) with an author,
+    allowing corrections to the original NOMAD attribution data.
     
     Parameters:
     -----------
     filename: str
-        Path to the attribution file
+        Path to the attribution overrides file
         
     Returns:
     --------
     dict
-        Dictionary of attribution overrides
+        Dictionary of attribution overrides with structure:
+        {
+            'upload_id': {
+                'author_id': 'original_or_override_id',
+                'author_display_name': 'human_readable_name',
+                'override_date': 'YYYY-MM-DD'
+            }
+        }
     """
     attributions = {}
     try:
         # Check if file exists
         import os
-        if not os.path.exists(filename):
+        
+        # For backward compatibility, check both the new and old filenames
+        old_filename = 'nomad_samples_with_authors.csv'
+        if not os.path.exists(filename) and os.path.exists(old_filename):
+            print(f"Using legacy attribution file {old_filename}")
+            filename = old_filename
+        elif not os.path.exists(filename):
             print(f"Attribution file {filename} not found. Starting with empty attributions.")
             return attributions
             
         # Load attributions from CSV
         df = pd.read_csv(filename)
         
-        # Convert to dictionary
+        # Convert to dictionary with improved field names
         for _, row in df.iterrows():
-            if 'upload_id' in row and 'main_author' in row:
-                attributions[row['upload_id']] = {
-                    'main_author': row['main_author'],
+            if 'upload_id' in row:
+                attribution_data = {
                     'override_date': row.get('override_date', datetime.now().strftime('%Y-%m-%d'))
                 }
+                
+                # Handle the author ID/name fields (with backwards compatibility)
+                if 'author_id' in row:
+                    attribution_data['author_id'] = row['author_id']
+                elif 'main_author' in row:  # Legacy field name
+                    attribution_data['author_id'] = row['main_author']
+                
+                # Handle the display name field (with backwards compatibility)
+                if 'author_display_name' in row:
+                    attribution_data['author_display_name'] = row['author_display_name']
+                elif 'main_author_name' in row:  # Legacy field name
+                    attribution_data['author_display_name'] = row['main_author_name']
+                elif 'author_id' in attribution_data:  # Fallback to ID if no name is available
+                    attribution_data['author_display_name'] = attribution_data['author_id']
+                    
+                attributions[row['upload_id']] = attribution_data
                 
         print(f"Loaded {len(attributions)} attribution overrides")
         return attributions
@@ -194,16 +226,19 @@ def load_attributions(filename: str = 'nomad_samples_with_authors.csv') -> Dict[
         print(f"Error loading attributions: {str(e)}")
         return attributions
 
-def save_attributions(attributions: Dict[str, Dict[str, str]], filename: str = 'nomad_samples_with_authors.csv') -> bool:
+def save_attributions(attributions: Dict[str, Dict[str, str]], filename: str = 'attribution_overrides.csv') -> bool:
     """
     Save attribution overrides to file
+    
+    This function persists the current state of attribution overrides to a CSV file.
+    Each row represents a sample whose author attribution has been manually corrected.
     
     Parameters:
     -----------
     attributions: dict
         Dictionary of attribution overrides
     filename: str
-        Path to save the attribution file
+        Path to save the attribution overrides file
         
     Returns:
     --------
@@ -211,20 +246,46 @@ def save_attributions(attributions: Dict[str, Dict[str, str]], filename: str = '
         True if successful, False otherwise
     """
     try:
-        # Convert to DataFrame
+        # Import os here to ensure it's available
+        import os
+        
+        # Convert to DataFrame with improved field names
         data = []
         for upload_id, attr_info in attributions.items():
+            # Handle both the new field names and legacy field names
+            author_id = attr_info.get('author_id', attr_info.get('main_author', ''))
+            author_display_name = attr_info.get('author_display_name', 
+                                      attr_info.get('main_author_name', author_id))
+            
             data.append({
                 'upload_id': upload_id,
-                'main_author': attr_info.get('main_author', ''),
+                'author_id': author_id,
+                'author_display_name': author_display_name,
                 'override_date': attr_info.get('override_date', datetime.now().strftime('%Y-%m-%d'))
             })
             
         df = pd.DataFrame(data)
         
-        # Save to CSV
-        df.to_csv(filename, index=False)
+        # Add a comment header to the CSV file
+        header_comment = "# NOMAD Sample Attribution Overrides\n# This file contains manual corrections to sample attributions.\n"
+        
+        # Write the header comment first
+        with open(filename, 'w') as f:
+            f.write(header_comment)
+        
+        # Then append the CSV data
+        df.to_csv(filename, index=False, mode='a')
+        
         print(f"Saved {len(attributions)} attribution overrides to {filename}")
+        
+        # If we're saving to the new filename and the old file exists, add a migration note
+        old_filename = 'nomad_samples_with_authors.csv'
+        if filename != old_filename and os.path.exists(old_filename):
+            with open(old_filename, 'w') as f:
+                f.write("# MIGRATED: Attribution data has been moved to 'attribution_overrides.csv'\n")
+                f.write("# This file is kept for backwards compatibility.\n")
+            print(f"Added migration note to {old_filename}")
+            
         return True
         
     except Exception as e:
