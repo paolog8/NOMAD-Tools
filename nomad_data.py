@@ -193,9 +193,29 @@ def load_attributions(filename: str = 'attribution_overrides.csv') -> Dict[str, 
             print(f"Attribution file {filename} not found. Starting with empty attributions.")
             return attributions
             
-        # Load attributions from CSV
-        df = pd.read_csv(filename)
+        # Remove comment lines before parsing with pandas
+        with open(filename, 'r') as f:
+            lines = f.readlines()
         
+        # Filter out comment lines
+        data_lines = [line for line in lines if not line.strip().startswith('#')]
+        
+        if not data_lines:
+            print(f"No data found in attribution file {filename}.")
+            return attributions
+            
+        # Write filtered content to a temporary file
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp:
+            temp_filename = temp.name
+            temp.writelines(data_lines)
+            
+        # Load the filtered CSV
+        df = pd.read_csv(temp_filename)
+        
+        # Clean up the temporary file
+        os.unlink(temp_filename)
+            
         # Convert to dictionary with improved field names
         for _, row in df.iterrows():
             if 'upload_id' in row:
