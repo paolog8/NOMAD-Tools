@@ -33,3 +33,7 @@ ENV/
 # Operating System files
 .DS_Store
 Thumbs.db
+
+# NOMAD cache files
+.nomad_cache/
+.nomad_cache/**
