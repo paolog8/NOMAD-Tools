@@ -32,20 +32,49 @@ def get_all_samples_with_authors(
     page = 1
     total_pages = float('inf')  # Will be updated after first query
     
+    # First try with admin access, then fall back to visible
+    access_levels = ["admin", "visible"]
+    
     # Query for samples (entries with specified section type)
-    query_payload = {
-        "owner": "visible",
-        "query": {
-            "and": [
-                {"results.eln.sections:any": [section_type]},
-                {"quantities:all": ["data"]},
-            ]
-        },
-        "pagination": {
-            "page_size": page_size,
-            "page": page
-        }
-    }
+    query_payload = None
+    response_entries = None
+    
+    for access_level in access_levels:
+        try:
+            query_payload = {
+                "owner": access_level,
+                "query": {
+                    "and": [
+                        {"results.eln.sections:any": [section_type]},
+                        {"quantities:all": ["data"]},
+                    ]
+                },
+                "pagination": {
+                    "page_size": page_size,
+                    "page": page
+                }
+            }
+            
+            if show_progress:
+                print(f"Trying to retrieve samples with {access_level} access...")
+            
+            # Test query with current access level
+            response_entries = client.make_request("post", "entries/query", json_data=query_payload)
+            if response_entries:
+                if show_progress:
+                    print(f"Successfully retrieved samples with {access_level} access")
+                break
+                
+        except Exception as e:
+            if access_level == "admin":
+                if show_progress:
+                    print(f"Admin access failed, falling back to visible access...")
+                continue
+            else:
+                raise Exception(f"Failed to retrieve samples with both admin and visible access: {str(e)}")
+    
+    if not response_entries:
+        raise Exception("Failed to retrieve any samples")
     
     if show_progress:
         print("Retrieving samples with author information...")

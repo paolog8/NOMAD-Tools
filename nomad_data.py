@@ -142,23 +142,39 @@ def get_hysprint_data(client, max_entries: Optional[int] = 500) -> Optional[pd.D
 
         print(f"Retrieving {'all' if max_entries is None else f'up to {max_entries}'} HySprint samples...")
         
-        # Define the query payload for HySprint samples
-        query_payload = {
-            "owner": "visible",
-            "query": {
-                "and": [
-                    {"results.eln.sections:any": ["HySprint_Sample"]},
-                    {"quantities:all": ["data"]},
-                ]
-            },
-            "pagination": {
-                "page_size": 100,  # Always use maximum page size allowed
-                "page": 1
-            }
-        }
+        # First try with admin access, then fall back to visible
+        access_levels = ["admin", "visible"]
+        query_payload = None
+        response = None
         
-        # Get first page to determine total entries
-        response = client.make_request("post", "entries/query", json_data=query_payload)
+        for access_level in access_levels:
+            try:
+                query_payload = {
+                    "owner": access_level,
+                    "query": {
+                        "and": [
+                            {"results.eln.sections:any": ["HySprint_Sample"]},
+                            {"quantities:all": ["data"]},
+                        ]
+                    },
+                    "pagination": {
+                        "page_size": 100,  # Always use maximum page size allowed
+                        "page": 1
+                    }
+                }
+                
+                print(f"Trying to retrieve samples with {access_level} access...")
+                response = client.make_request("post", "entries/query", json_data=query_payload)
+                if response:
+                    print(f"Successfully retrieved samples with {access_level} access")
+                    break
+                    
+            except Exception as e:
+                if access_level == "admin":
+                    print(f"Admin access failed, falling back to visible access...")
+                    continue
+                else:
+                    raise Exception(f"Failed to retrieve samples with both admin and visible access: {str(e)}")
         
         if not response or 'data' not in response:
             raise ValueError("No data received from NOMAD API")
